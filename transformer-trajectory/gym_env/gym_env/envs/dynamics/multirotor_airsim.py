@@ -22,12 +22,20 @@ class MultirotorDynamicsAirsim():
         self.uav_feature_length = cfg.getint('options', 'uav_feature_length') 
         self.goal_feature_length = cfg.getint('options', 'goal_feature_length') 
 
+        #goal
+        self.goal_mode = cfg.get('goal', 'goal_mode') # 'fixed' or 'random'
+        self.goal_fixed_x = cfg.getfloat('goal', 'goal_fixed_x')
+        self.goal_fixed_y = cfg.getfloat('goal', 'goal_fixed_y')
+        self.goal_fixed_z = cfg.getfloat('goal', 'goal_fixed_z')
+        self.goal_move_step_length = cfg.getfloat('goal', 'goal_move_step_length')
+        self.goal_distance_init = cfg.getfloat('goal', 'goal_distance_init')
+
         # internal vars
         self.start_position = [0.0, 0.0, 0.0]
         self.goal_position = [0.0, 0.0, 0.0]
-        self.goal_distance_init = 40.0 
         
         # [修改] 游走相关参数
+        self.goal_fixed_pose = [self.goal_fixed_x, self.goal_fixed_y, self.goal_fixed_z]
         self.goal_move_step_length = 0.1
         self.goal_move_direction = 0.0     # 2D/3D Azimuth (方位角)
         self.goal_move_elevation = 0.0     # 3D Elevation (俯仰角)
@@ -122,14 +130,22 @@ class MultirotorDynamicsAirsim():
         self.last_cmd = [float(cmd_vx), float(cmd_vy), float(cmd_vz), float(cmd_yaw_rate)]
 
     def init_goal_pose_adaptive(self):
-        """
-        [新增] 自适应目标初始化
-        - 2D模式: 仅在 XY 平面随机，高度固定为 start_z
-        - 3D模式: XY 平面随机，高度在 start_z 附近随机
-        """
-        if not hasattr(self, 'goal_distance_init') or self.goal_distance_init is None:
-            self.goal_distance_init = 40.0
+        # ================== 模式 1: 固定目标 ==================
+        if self.goal_mode == 'fixed':
+            # 直接使用配置文件中的坐标
+            gx, gy, gz = self.goal_fixed_pose
+            self.goal_position = [float(gx), float(gy), float(gz)]
             
+            # 计算一下初始距离，用于后续归一化参考
+            dx = gx - self.start_position[0]
+            dy = gy - self.start_position[1]
+            dz = gz - self.start_position[2]
+            self.goal_distance_init = math.sqrt(dx**2 + dy**2 + dz**2) # 更新初始距离参考
+            
+            print(f"[InitGoal] Fixed Mode | Pos ({gx:.1f}, {gy:.1f}, {gz:.1f})")
+            return
+
+        # ================== 模式 2: 随机目标 ==================
         # 1. 确定水平距离和方位角
         self.r = self.goal_distance_init + np.random.uniform(-5, 5)
         phi = np.random.rand() * 2 * math.pi
@@ -148,26 +164,33 @@ class MultirotorDynamicsAirsim():
         if self.dim == 2:
             goal_z = start_z
         else:
-            # 3D模式: 在起始高度上下 10米 范围内随机，且不低于地面 (假设0为地面)
-            # 注意: self.start_position[2] 通常代表高度(正数)
+            # 3D模式: 在起始高度上下 10米 范围内随机，且不低于地面
             z_variation = np.random.uniform(-10.0, 10.0)
-            goal_z = np.clip(start_z + z_variation, 2.0, 25.0) # 限制在 [2m, 25m] 高度区间
+            goal_z = np.clip(start_z + z_variation, 2.0, 25.0) 
 
-        self.goal_distance = math.sqrt(dx*dx + dy*dy) # 记录水平距离参考
+        self.goal_distance = math.sqrt(dx*dx + dy*dy) 
         self.goal_position = [float(goal_x), float(goal_y), float(goal_z)]
         
         # 初始化游走方向
         self.goal_move_direction = np.random.uniform(0, 2 * math.pi)
-        self.goal_move_elevation = np.random.uniform(-math.pi/6, math.pi/6) # 初试俯仰角 +/- 30度
+        self.goal_move_elevation = np.random.uniform(-math.pi/6, math.pi/6)
         
-        print(f"[InitGoal] Mode {self.dim}D | Pos ({goal_x:.1f}, {goal_y:.1f}, {goal_z:.1f})")
+        print(f"[InitGoal] Random Mode {self.dim}D | Pos ({goal_x:.1f}, {goal_y:.1f}, {goal_z:.1f})")
 
     def update_goal_pose_adaptive(self):
         """
-        [新增] 自适应目标游走更新
+        [修改] 自适应目标游走更新
+        如果是 fixed 模式则不更新；如果是 random 模式则进行随机游走。
         """
-        base_step = self.goal_move_step_length
-        step_variation = 0.2
+        # ================== 模式 1: 固定目标 ==================
+        if self.goal_mode == 'fixed':
+            return # 固定模式下，目标不移动
+
+        # ================== 模式 2: 随机目标 ==================
+        # 使用配置中读取的步长
+        base_step = self.goal_move_step_length 
+        step_variation = 0.2 * base_step # 步长波动幅度为 20%
+        
         direction_drift = math.radians(15) # 方位角漂移
         elevation_drift = math.radians(10) # 俯仰角漂移
         
@@ -178,7 +201,7 @@ class MultirotorDynamicsAirsim():
         self.goal_move_direction = (self.goal_move_direction + direction_offset) % (2 * math.pi)
         
         limit_xy = 75.0
-        limit_z_min, limit_z_max = 2.0, 25.0 # 3D模式的高度限制
+        limit_z_min, limit_z_max = 2.0, 25.0 
         
         hit_boundary = False
         
@@ -193,14 +216,9 @@ class MultirotorDynamicsAirsim():
             
         else: # dim == 3
             # === 3D 更新逻辑 (球坐标) ===
-            # 更新俯仰角 (Elevation)
+            # 更新俯仰角
             elev_offset = np.random.uniform(-elevation_drift, elevation_drift)
             self.goal_move_elevation = np.clip(self.goal_move_elevation + elev_offset, -math.pi/2.5, math.pi/2.5)
-            
-            # 3D 步长投影
-            # dx = step * cos(elev) * cos(azi)
-            # dy = step * cos(elev) * sin(azi)
-            # dz = step * sin(elev)
             
             c_ele = math.cos(self.goal_move_elevation)
             s_ele = math.sin(self.goal_move_elevation)
@@ -216,19 +234,19 @@ class MultirotorDynamicsAirsim():
         # 2. 边界检查 (XY)
         if new_x < -limit_xy or new_x > limit_xy:
             new_x = np.clip(new_x, -limit_xy, limit_xy)
-            self.goal_move_direction = math.pi - self.goal_move_direction # X轴反射
+            self.goal_move_direction = math.pi - self.goal_move_direction 
             hit_boundary = True
             
         if new_y < -limit_xy or new_y > limit_xy:
             new_y = np.clip(new_y, -limit_xy, limit_xy)
-            self.goal_move_direction = -self.goal_move_direction # Y轴反射
+            self.goal_move_direction = -self.goal_move_direction
             hit_boundary = True
             
-        # 3. 边界检查 (Z) - 仅 3D 模式生效
+        # 3. 边界检查 (Z)
         if self.dim == 3:
             if new_z < limit_z_min or new_z > limit_z_max:
                 new_z = np.clip(new_z, limit_z_min, limit_z_max)
-                self.goal_move_elevation = -self.goal_move_elevation # Z轴反射
+                self.goal_move_elevation = -self.goal_move_elevation 
         
         # 4. 应用位置
         self.goal_position = [float(new_x), float(new_y), float(new_z)]

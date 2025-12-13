@@ -192,6 +192,9 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
         self.action_smooth_enable = cfg.getboolean('options', 'action_smooth_enable')
         self.action_smooth_window = cfg.getint('options', 'action_smooth_window')
 
+        self.use_safe_vel = cfg.getboolean('options', 'use_safe_vel')
+        self.vel_safe_lidar_dist = cfg.getfloat('options', 'vel_safe_lidar_dist')
+
         self._action_history = [deque(maxlen=self.action_smooth_window)
                                 for _ in range(self.action_dim)]
         self._action_smoothed_prev = np.zeros(self.action_dim, dtype=np.float32)
@@ -331,7 +334,8 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
     def step(self, action):
         raw_action = action
         action = self._smooth_action_exponential(action)
-        
+        action = self._apply_safe_velocity_correction(action)
+
         # [修改] 使用 Adaptive 更新方法
         self.dynamic_model.update_goal_pose_adaptive()
         self.dynamic_model.set_action(action)
@@ -626,9 +630,9 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
         
         # [调试信息] 打印各项奖励分量 (保留一位小数，紧凑显示)
         # 使用 \r 实现单行刷新，避免刷屏
-        print(f"\r步数 {self.step_num:03} | 总奖励:{total_reward: 6.2f} | "
-              f"进度:{r_progress: 5.2f} 时间:{r_time: 5.2f} 安全:{r_safety: 5.2f} "
-              f"能耗:{r_energy: 5.2f} 抖动:{r_jerk: 5.2f} 航向:{r_heading: 5.2f} 直线:{r_velocity_line: 5.2f}", end="")
+        # print(f"\r步数 {self.step_num:03} | 总奖励:{total_reward: 6.2f} | "
+        #       f"进度:{r_progress: 5.2f} 时间:{r_time: 5.2f} 安全:{r_safety: 5.2f} "
+        #       f"能耗:{r_energy: 5.2f} 抖动:{r_jerk: 5.2f} 航向:{r_heading: 5.2f} 直线:{r_velocity_line: 5.2f}", end="")
 
         return float(total_reward)
 
@@ -695,6 +699,120 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
             self._action_smoothed_prev[i] = s 
 
         return out
+
+    def _apply_safe_velocity_correction(self, action):
+        """
+        [新增] 速度安全兜底机制
+        检测动作指示的速度方向是否存在障碍物，如果存在，则向左右搜索安全的扇区进行避让。
+        """
+        if not self.use_safe_vel or self.dim != 2: # 目前主要支持2D平面的避障修正
+            return action
+        
+        # 1. 获取当前激光雷达数据 (取水平一圈的一维数据)
+        # 注意：这里我们重新获取一次纯几何数据，不影响 observation 的历史记录
+        lidar_1d = self.get_lidar_data(ver=1, hor=self.lidar_points_per_layer).flatten()
+        
+        # 2. 解析当前动作的速度矢量 (全局坐标系 NED)
+        # action 是归一化的 [-1, 1]，需要结合 v_xy_max 理解意图，但主要关注方向，归一化值即可
+        vx_global = action[0]
+        vy_global = action[1]
+        
+        # 如果速度非常小，不需要修正（比如悬停）
+        if math.sqrt(vx_global**2 + vy_global**2) < 0.05:
+            return action
+
+        # 3. 获取无人机当前的偏航角 (Yaw)
+        _, _, yaw_rad = self.dynamic_model.get_attitude()
+        
+        # 4. 将全局速度转换到 机体坐标系 (Body Frame)
+        # 公式: V_body = R_z(-psi) * V_global
+        # v_bx =  v_gx * cos(psi) + v_gy * sin(psi)
+        # v_by = -v_gx * sin(psi) + v_gy * cos(psi)
+        c_yaw = math.cos(yaw_rad)
+        s_yaw = math.sin(yaw_rad)
+        
+        v_body_x =  vx_global * c_yaw + vy_global * s_yaw
+        v_body_y = -vx_global * s_yaw + vy_global * c_yaw
+        
+        # 5. 计算机体坐标系下的速度角度
+        vel_angle_body = math.atan2(v_body_y, v_body_x) # range [-pi, pi]
+        
+        # 6. 映射角度到激光雷达索引
+        # 参考 get_lidar_data 中的映射逻辑:
+        # h_idx = ((angle - h_off) % 2pi) / h_range * total_points
+        h_range = math.radians(self.HorizontalFOVEnd - self.HorizontalFOVStart)
+        h_off   = math.radians(self.HorizontalFOVStart)
+        
+        idx_float = ((vel_angle_body - h_off) % (2*math.pi)) / h_range * self.lidar_points_per_layer
+        target_idx = int(idx_float) % self.lidar_points_per_layer
+        
+        # 7. 检查目标方向是否安全
+        # 考虑到点云的稀疏性，我们检查目标索引左右各 1 个点的最小值
+        check_width = 1 
+        safe_indices = []
+        min_dist_in_path = self.lidar_max_range
+        
+        # 简单的邻域检查
+        idx_check_list = [ (target_idx + i) % self.lidar_points_per_layer for i in range(-check_width, check_width+1)]
+        current_sector_dist = np.min(lidar_1d[idx_check_list])
+        
+        if current_sector_dist > self.vel_safe_lidar_dist:
+            print('safe velocity')
+            return action # 当前方向安全，无需修正
+            
+        # 8. 如果不安全，开始搜索最近的安全扇区
+        # 我们从 target_idx 向左向右同时搜索，直到找到一个距离 > 阈值 的扇区
+        best_new_idx = -1
+        
+        # 限制搜索范围为 +/- 90度 (防止它掉头往回飞)
+        search_range = self.lidar_points_per_layer // 4 
+        
+        for offset in range(1, search_range):
+            # 检查右侧
+            right_idx = (target_idx + offset) % self.lidar_points_per_layer
+            if lidar_1d[right_idx] > self.vel_safe_lidar_dist:
+                best_new_idx = right_idx
+                break
+            
+            # 检查左侧
+            left_idx = (target_idx - offset) % self.lidar_points_per_layer
+            if lidar_1d[left_idx] > self.vel_safe_lidar_dist:
+                best_new_idx = left_idx
+                break
+        
+        if best_new_idx == -1:
+            # 如果前方180度都被堵死，保持原动作（或者可以选择刹车 return action * 0）
+            # 这里选择减速并保持原方向，交给RL去惩罚碰撞
+            return action * 0.1 
+            
+        # 9. 重构修正后的速度矢量
+        # 将 best_new_idx 转回 机体角度
+        # angle = (idx / total) * range + off
+        # 注意: 需要处理 wrap around 2pi 的情况，这里简化处理
+        new_angle_body = (best_new_idx / self.lidar_points_per_layer) * h_range + h_off
+        
+        # 保持原有速度大小，只改变方向
+        vel_mag = math.sqrt(v_body_x**2 + v_body_y**2)
+        new_v_body_x = vel_mag * math.cos(new_angle_body)
+        new_v_body_y = vel_mag * math.sin(new_angle_body)
+        
+        # 10. 将修正后的机体速度 转回 全局坐标系
+        # v_gx = v_bx * cos(psi) - v_by * sin(psi)
+        # v_gy = v_bx * sin(psi) + v_by * cos(psi)
+        new_vx_global = new_v_body_x * c_yaw - new_v_body_y * s_yaw
+        new_vy_global = new_v_body_x * s_yaw + new_v_body_y * c_yaw
+        
+        # 11. 更新 Action
+        new_action = action.copy()
+        new_action[0] = new_vx_global
+        new_action[1] = new_vy_global
+        
+        # 可以在这里打印 debug 信息
+        # print(f"[SafeVel] Correction: Idx {target_idx}({current_sector_dist:.1f}m) -> {best_new_idx}")
+        print('unsafe velocity, correct to safe velocity')
+        return new_action
+
+
 
     def get_distance_to_goal_3d(self):
         cp = self.dynamic_model.get_position()
