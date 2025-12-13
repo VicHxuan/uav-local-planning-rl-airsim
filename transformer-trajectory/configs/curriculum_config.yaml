@@ -1,0 +1,145 @@
+# curriculum_config.yaml - 课程学习配置
+
+curriculum_learning:
+  enabled: true
+  
+  levels:
+    # ========== Level 1: Easy - 入门级 ==========
+    - name: "Level_1_Easy"
+      min_episodes: 50           # 最少训练20个episode
+      trigger_success_rate: 0.85 # 成功率达到70%晋级
+      
+      obstacles:
+        # 大立方体（稀疏分布）
+        - mesh_name: "obstacle_cube_big_"  
+          count: 10               # 数量少
+          scale_x: [1.5, 2.5]    # 尺寸中等
+          scale_y: [1.5, 2.5]
+          scale_z: [5.0, 5.0]    # 高度适中
+        
+        # 大圆柱（稀疏分布）
+        - mesh_name: "obstacle_cylinder_big_"           
+          count: 10
+          scale_x: [1.5, 2.5]
+          scale_y: [1.5, 2.5]
+          scale_z: [5.0, 5.0]
+
+    # ========== Level 2: Medium - 中等难度 ==========
+    - name: "Level_2_Medium"
+      min_episodes: 50           # 最少训练20个episode
+      trigger_success_rate: 0.85 # 成功率达到70%晋
+      
+      obstacles:
+        # 大立方体（数量增加）
+        - mesh_name: "obstacle_cube_big_"  
+          count: 30               # 数量少
+          scale_x: [1.5, 2.5]    # 尺寸中等
+          scale_y: [1.5, 2.5]
+          scale_z: [5.0, 5.0]    # 高度适中
+        
+        # 大圆柱（稀疏分布）
+        - mesh_name: "obstacle_cylinder_big_"           
+          count: 30
+          scale_x: [1.5, 2.5]
+          scale_y: [1.5, 2.5]
+          scale_z: [5.0, 5.0]
+
+
+    # ========== Level 3: Hard - 困难模式 ==========
+    - name: "Level_3_Hard"
+      min_episodes: 50           # 最少训练20个episode
+      trigger_success_rate: 0.85 # 成功率达到70%晋
+      
+      obstacles:
+        # 大立方体（数量增加）
+        - mesh_name: "obstacle_cube_big_"  
+          count: 30               # 数量少
+          scale_x: [2.0, 3.0]    # 尺寸中等
+          scale_y: [2.0, 3.0]
+          scale_z: [5.0, 5.0]    # 高度适中
+        
+        # 大圆柱（稀疏分布）
+        - mesh_name: "obstacle_cylinder_big_"           
+          count: 30
+          scale_x: [2.0, 3.0]
+          scale_y: [2.0, 3.0]
+          scale_z: [5.0, 5.0]
+
+        - mesh_name: "obstacle_cube_small_"  
+          count: 20               # 数量少
+          scale_x: [1.0, 2.0]    # 尺寸中等
+          scale_y: [1.0, 2.0]
+          scale_z: [5.0, 5.0]    # 高度适中
+        
+        # 大圆柱（稀疏分布）
+        - mesh_name: "obstacle_cylinder_small_"           
+          count: 20
+          scale_x: [1.0, 2.0]
+          scale_y: [1.0, 2.0]
+          scale_z: [5.0, 5.0]
+
+    # ========== Level 4: Expert - 专家模式 ==========
+    - name: "Level_4_Expert"
+      min_episodes: 50           # 最少训练20个episode
+      trigger_success_rate: 0.8 # 成功率达到70%晋
+      
+      obstacles:
+        # 大立方体（数量增加）
+        - mesh_name: "obstacle_cube_big_"  
+          count: 50               # 数量少
+          scale_x: [2.0, 3.0]    # 尺寸中等
+          scale_y: [2.0, 3.0]
+          scale_z: [5.0, 5.0]    # 高度适中
+        
+        # 大圆柱（稀疏分布）
+        - mesh_name: "obstacle_cylinder_big_"           
+          count: 50
+          scale_x: [2.0, 3.0]
+          scale_y: [2.0, 3.0]
+          scale_z: [5.0, 5.0]
+
+        - mesh_name: "obstacle_cube_small_"  
+          count: 30               # 数量少
+          scale_x: [1.0, 2.0]    # 尺寸中等
+          scale_y: [1.0, 2.0]
+          scale_z: [5.0, 5.0]    # 高度适中
+        
+        # 大圆柱（稀疏分布）
+        - mesh_name: "obstacle_cylinder_small_"           
+          count: 30
+          scale_x: [1.0, 2.0]
+          scale_y: [1.0, 2.0]
+          scale_z: [5.0, 5.0]
+
+    # ========== Level 5: nolimit - 无限制模式 ==========
+    - name: "Level_5_Nolimit"
+      min_episodes: 1e10           # 无限制
+      trigger_success_rate: 1.0 # 成功率达到70%晋
+      
+      obstacles:
+        # 大立方体（数量增加）
+        - mesh_name: "obstacle_cube_big_"  
+          count: 50               # 数量少
+          scale_x: [2.0, 3.0]    # 尺寸中等
+          scale_y: [2.0, 3.0]
+          scale_z: [5.0, 5.0]    # 高度适中
+        
+        # 大圆柱（稀疏分布）
+        - mesh_name: "obstacle_cylinder_big_"           
+          count: 50
+          scale_x: [2.0, 3.0]
+          scale_y: [2.0, 3.0]
+          scale_z: [5.0, 5.0]
+
+        - mesh_name: "obstacle_cube_small_"  
+          count: 50               # 数量少
+          scale_x: [1.0, 2.0]    # 尺寸中等
+          scale_y: [1.0, 2.0]
+          scale_z: [5.0, 5.0]    # 高度适中
+        
+        # 大圆柱（稀疏分布）
+        - mesh_name: "obstacle_cylinder_small_"           
+          count: 50
+          scale_x: [1.0, 2.0]
+          scale_y: [1.0, 2.0]
+          scale_z: [5.0, 5.0]
