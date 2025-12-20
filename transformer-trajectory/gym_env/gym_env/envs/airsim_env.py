@@ -238,8 +238,8 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
         if self.curriculum_manager and self.curriculum_manager.enabled:
             try:
                 curriculum_info = self.curriculum_manager.reset()
-                if self.episode_num % 10 == 0 or curriculum_info.get('level_changed', False):
-                    print(f"📚 Current Level: {curriculum_info['level'] + 1}")
+                if self.episode_num % 10 == 0:
+                    print(f"📚 Current Level: {curriculum_info['level']}")
                 time.sleep(0.8)
             except Exception as e:
                 print(f"[Reset] ⚠ Curriculum obstacle setup error: {e}")
@@ -364,6 +364,35 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
                 self.info['current_level'] = curriculum_info['level']
                 self.info['level_name'] = curriculum_info['name']
                 print(f"🎓 Graduated to Level {curriculum_info['level'] + 1}!")
+
+
+                import os
+                from datetime import datetime
+                
+                # 1. 获取当前脚本文件所在的绝对目录 (确保能找到文件夹)
+                current_script_dir = os.path.dirname(os.path.abspath(__file__))
+                
+                # 2. 拼接完整的文件夹路径
+                log_dir = os.path.join(current_script_dir, "curriculum_level_logs")
+                
+                if not os.path.exists(log_dir):
+                    os.makedirs(log_dir)
+                
+                # 3. 准备文件名和内容
+                time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                filename = f"Level_{curriculum_info['level']}_Record_{time_str}.txt"
+                file_path = os.path.join(log_dir, filename)
+                
+                # 4. 写入文件
+                with open(file_path, "w", encoding='utf-8') as f:
+                    f.write(f"System Time: {time_str}\n")
+                    f.write(f"Curriculum Level: {curriculum_info['level']}\n")
+                    f.write(f"Current Episode: {self.episode_num}\n")
+                    f.write(f"Total Steps: {self.total_step}\n")
+                
+                # 5. 打印完整路径，方便你在控制台直接复制路径去查找
+                print(f"📚 Level Up! Archive saved to: {file_path}")
+                print(f"📚 Current Level: {curriculum_info['level']}")
 
         try:
             p = np.array(self.dynamic_model.get_position(), dtype=np.float32)
@@ -702,115 +731,287 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
 
     def _apply_safe_velocity_correction(self, action):
         """
-        [新增] 速度安全兜底机制
-        检测动作指示的速度方向是否存在障碍物，如果存在，则向左右搜索安全的扇区进行避让。
+        极端保守的 Safety Shield（2D）
+        目标：宁可停住，也尽量避免任何碰撞。
+
+        核心思想：
+        1) 用 LiDAR 高分辨率水平 bin 的最小距离作为“走廊净空”；
+        2) 用“反应距离 + 制动距离”约束速度上限；
+        3) 必要时选取“可安全速度上限最大”的方向（更偏向更远的区间）；
+        4) LiDAR 数据异常/盲区：直接刹停。
         """
-        if not self.use_safe_vel or self.dim != 2: # 目前主要支持2D平面的避障修正
-            return action
-        
-        # 1. 获取当前激光雷达数据 (取水平一圈的一维数据)
-        # 注意：这里我们重新获取一次纯几何数据，不影响 observation 的历史记录
-        lidar_1d = self.get_lidar_data(ver=1, hor=self.lidar_points_per_layer).flatten()
-        
-        # 2. 解析当前动作的速度矢量 (全局坐标系 NED)
-        # action 是归一化的 [-1, 1]，需要结合 v_xy_max 理解意图，但主要关注方向，归一化值即可
-        vx_global = action[0]
-        vy_global = action[1]
-        
-        # 如果速度非常小，不需要修正（比如悬停）
-        if math.sqrt(vx_global**2 + vy_global**2) < 0.05:
+        if (not getattr(self, "use_safe_vel", False)) or getattr(self, "dim", 2) != 2:
             return action
 
-        # 3. 获取无人机当前的偏航角 (Yaw)
-        _, _, yaw_rad = self.dynamic_model.get_attitude()
-        
-        # 4. 将全局速度转换到 机体坐标系 (Body Frame)
-        # 公式: V_body = R_z(-psi) * V_global
-        # v_bx =  v_gx * cos(psi) + v_gy * sin(psi)
-        # v_by = -v_gx * sin(psi) + v_gy * cos(psi)
-        c_yaw = math.cos(yaw_rad)
-        s_yaw = math.sin(yaw_rad)
-        
-        v_body_x =  vx_global * c_yaw + vy_global * s_yaw
-        v_body_y = -vx_global * s_yaw + vy_global * c_yaw
-        
-        # 5. 计算机体坐标系下的速度角度
-        vel_angle_body = math.atan2(v_body_y, v_body_x) # range [-pi, pi]
-        
-        # 6. 映射角度到激光雷达索引
-        # 参考 get_lidar_data 中的映射逻辑:
-        # h_idx = ((angle - h_off) % 2pi) / h_range * total_points
-        h_range = math.radians(self.HorizontalFOVEnd - self.HorizontalFOVStart)
-        h_off   = math.radians(self.HorizontalFOVStart)
-        
-        idx_float = ((vel_angle_body - h_off) % (2*math.pi)) / h_range * self.lidar_points_per_layer
-        target_idx = int(idx_float) % self.lidar_points_per_layer
-        
-        # 7. 检查目标方向是否安全
-        # 考虑到点云的稀疏性，我们检查目标索引左右各 1 个点的最小值
-        check_width = 1 
-        safe_indices = []
-        min_dist_in_path = self.lidar_max_range
-        
-        # 简单的邻域检查
-        idx_check_list = [ (target_idx + i) % self.lidar_points_per_layer for i in range(-check_width, check_width+1)]
-        current_sector_dist = np.min(lidar_1d[idx_check_list])
-        
-        if current_sector_dist > self.vel_safe_lidar_dist:
-            print('safe velocity')
-            return action # 当前方向安全，无需修正
-            
-        # 8. 如果不安全，开始搜索最近的安全扇区
-        # 我们从 target_idx 向左向右同时搜索，直到找到一个距离 > 阈值 的扇区
-        best_new_idx = -1
-        
-        # 限制搜索范围为 +/- 90度 (防止它掉头往回飞)
-        search_range = self.lidar_points_per_layer // 4 
-        
-        for offset in range(1, search_range):
-            # 检查右侧
-            right_idx = (target_idx + offset) % self.lidar_points_per_layer
-            if lidar_1d[right_idx] > self.vel_safe_lidar_dist:
-                best_new_idx = right_idx
-                break
-            
-            # 检查左侧
-            left_idx = (target_idx - offset) % self.lidar_points_per_layer
-            if lidar_1d[left_idx] > self.vel_safe_lidar_dist:
-                best_new_idx = left_idx
-                break
-        
-        if best_new_idx == -1:
-            # 如果前方180度都被堵死，保持原动作（或者可以选择刹车 return action * 0）
-            # 这里选择减速并保持原方向，交给RL去惩罚碰撞
-            return action * 0.1 
-            
-        # 9. 重构修正后的速度矢量
-        # 将 best_new_idx 转回 机体角度
-        # angle = (idx / total) * range + off
-        # 注意: 需要处理 wrap around 2pi 的情况，这里简化处理
-        new_angle_body = (best_new_idx / self.lidar_points_per_layer) * h_range + h_off
-        
-        # 保持原有速度大小，只改变方向
-        vel_mag = math.sqrt(v_body_x**2 + v_body_y**2)
-        new_v_body_x = vel_mag * math.cos(new_angle_body)
-        new_v_body_y = vel_mag * math.sin(new_angle_body)
-        
-        # 10. 将修正后的机体速度 转回 全局坐标系
-        # v_gx = v_bx * cos(psi) - v_by * sin(psi)
-        # v_gy = v_bx * sin(psi) + v_by * cos(psi)
-        new_vx_global = new_v_body_x * c_yaw - new_v_body_y * s_yaw
-        new_vy_global = new_v_body_x * s_yaw + new_v_body_y * c_yaw
-        
-        # 11. 更新 Action
-        new_action = action.copy()
-        new_action[0] = new_vx_global
-        new_action[1] = new_vy_global
-        
-        # 可以在这里打印 debug 信息
-        # print(f"[SafeVel] Correction: Idx {target_idx}({current_sector_dist:.1f}m) -> {best_new_idx}")
-        print('unsafe velocity, correct to safe velocity')
-        return new_action
+        act = np.asarray(action, dtype=np.float32).reshape(-1)
+        if act.shape[0] < 3:
+            return action
+
+        # ---- 参数准备 ----
+        num_bins = int(getattr(self, "lidar_points_per_layer", 0))
+        if num_bins <= 0:
+            return action
+
+        dt = float(getattr(self, "_dt", 0.1))
+        dt = max(dt, 1e-3)
+
+        v_xy_max = float(getattr(self, "v_xy_max", getattr(self.dynamic_model, "v_xy_max", 1.0)))
+        v_xy_max = max(v_xy_max, 1e-3)
+
+        a_max = float(getattr(self, "acc_max", getattr(self.dynamic_model, "acc_xy_max", 1.0)))
+        a_max = max(a_max, 0.1)
+
+        lidar_max_range = float(getattr(self, "lidar_max_range", 50.0))
+        crash_distance = float(getattr(self, "crash_distance", 2.0))
+        trigger_dist = float(getattr(self, "vel_safe_lidar_dist", 8.0))
+
+        # 安全缓冲：宁可更大（擦碰/建模误差/离散化）
+        buffer_dist = crash_distance + 0.8
+        trigger_dist = max(trigger_dist, buffer_dist + 0.2)
+
+        # ---- 小工具：四元数与旋转矩阵 ----
+        def _quat_mul(q1, q2):
+            # AirSim Quaternionr: (x, y, z, w) fields, but math uses (w, x, y, z)
+            w1, x1, y1, z1 = q1.w_val, q1.x_val, q1.y_val, q1.z_val
+            w2, x2, y2, z2 = q2.w_val, q2.x_val, q2.y_val, q2.z_val
+            w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+            x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+            y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
+            z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+            return airsim.Quaternionr(x_val=x, y_val=y, z_val=z, w_val=w)
+
+        def _quat_to_rotmat(q):
+            w, x, y, z = float(q.w_val), float(q.x_val), float(q.y_val), float(q.z_val)
+            n = w * w + x * x + y * y + z * z
+            if n < 1e-12:
+                return np.eye(3, dtype=np.float32)
+            s = 2.0 / n
+
+            wx, wy, wz = s * w * x, s * w * y, s * w * z
+            xx, xy, xz = s * x * x, s * x * y, s * x * z
+            yy, yz, zz = s * y * y, s * y * z, s * z * z
+
+            return np.array(
+                [
+                    [1.0 - (yy + zz), xy - wz, xz + wy],
+                    [xy + wz, 1.0 - (xx + zz), yz - wx],
+                    [xz - wy, yz + wx, 1.0 - (xx + yy)],
+                ],
+                dtype=np.float32,
+            )
+
+        # ---- 读取车辆真实速度与姿态（用于惯性/真实速度方向）----
+        v_now_world = np.zeros(2, dtype=np.float32)
+        q_wv = None
+        vehicle_pos = None
+        try:
+            state = self.client.getMultirotorState()
+            kin = state.kinematics_estimated
+            v_now_world[:] = [kin.linear_velocity.x_val, kin.linear_velocity.y_val]
+            q_wv = kin.orientation
+            vehicle_pos = np.array([kin.position.x_val, kin.position.y_val, kin.position.z_val], dtype=np.float32)
+        except Exception:
+            pass
+
+        # ---- 获取 LiDAR 数据（高保真）----
+        try:
+            lidar_data = self.client.getLidarData(lidar_name=self.lidar_sensor_name)
+        except Exception:
+            safe = act.copy()
+            safe[:2] = 0.0
+            safe[2] = 0.0
+            return safe
+
+        if lidar_data is None or len(lidar_data.point_cloud) < 3:
+            # 没有点云：最保守处理 -> 刹停
+            safe = act.copy()
+            safe[:2] = 0.0
+            safe[2] = 0.0
+            return safe
+
+        # ---- 判断 LiDAR pose 是 world 还是 vehicle 相对（用位置差做启发式）----
+        lidar_pos = np.array(
+            [lidar_data.pose.position.x_val, lidar_data.pose.position.y_val, lidar_data.pose.position.z_val],
+            dtype=np.float32,
+        )
+        lidar_pose_is_world = False
+        if vehicle_pos is not None:
+            # LiDAR 安装在机体上，若 pose 是 world，则与 vehicle world pos 距离应很小（<几米）
+            lidar_pose_is_world = float(np.linalg.norm(lidar_pos - vehicle_pos)) < 5.0
+
+        # LiDAR 在 world 的姿态四元数 q_wl
+        q_l = lidar_data.pose.orientation
+        if lidar_pose_is_world or (q_wv is None):
+            q_wl = q_l
+        else:
+            # q_wl = q_wv * q_vl
+            q_wl = _quat_mul(q_wv, q_l)
+
+        R_wl = _quat_to_rotmat(q_wl)   # lidar -> world
+        R_lw = R_wl.T                  # world -> lidar
+
+        # ---- 把点云按水平角 bin 成 1D 最小距离 ----
+        points = np.asarray(lidar_data.point_cloud, dtype=np.float32).reshape(-1, 3)
+        dists = np.linalg.norm(points, axis=1)
+        valid = np.isfinite(dists) & (dists > 1e-3)
+        if not np.any(valid):
+            safe = act.copy()
+            safe[:2] = 0.0
+            safe[2] = 0.0
+            return safe
+
+        points = points[valid]
+        dists = dists[valid]
+        horiz = np.arctan2(points[:, 1], points[:, 0])
+
+        h_off = math.radians(float(getattr(self, "HorizontalFOVStart", -180.0)))
+        h_range = math.radians(float(getattr(self, "HorizontalFOVEnd", 180.0)) - float(getattr(self, "HorizontalFOVStart", -180.0)))
+        if h_range <= 0.0:
+            h_range = h_range % (2.0 * math.pi)
+        if h_range <= 1e-6:
+            h_range = 2.0 * math.pi
+
+        full_fov = abs(h_range - 2.0 * math.pi) < 1e-3
+
+        frac = ((horiz - h_off) % (2.0 * math.pi)) / h_range
+        idx = np.floor(frac * num_bins).astype(np.int32)
+        idx_valid = (idx >= 0) & (idx < num_bins)
+
+        lidar_1d = np.full((num_bins,), lidar_max_range, dtype=np.float32)
+        np.minimum.at(lidar_1d, idx[idx_valid], dists[idx_valid])
+        lidar_1d = np.nan_to_num(lidar_1d, nan=0.0, posinf=lidar_max_range, neginf=0.0)
+        lidar_1d = np.clip(lidar_1d, 0.0, lidar_max_range)
+
+        d_global_min = float(np.min(lidar_1d))
+
+        # ---- 走廊角宽：用较大窗口覆盖机体宽度/擦碰 ----
+        inflation = crash_distance + 0.5
+        min_half_angle = math.radians(15.0)  # 至少 +/-15度
+        half_angle = max(min_half_angle, math.atan2(inflation, max(trigger_dist, 0.1)))
+        half_bins = int(math.ceil(half_angle / h_range * num_bins))
+        half_bins = int(np.clip(half_bins, 1, max(1, num_bins // 2)))
+        offsets = np.arange(-half_bins, half_bins + 1, dtype=np.int32)
+
+        def corridor_min(center_idx: int) -> float:
+            inds = (center_idx + offsets) % num_bins
+            return float(np.min(lidar_1d[inds]))
+
+        # ---- 基于“反应 + 制动”的速度上限（关键保证逻辑）----
+        # 解 v*dt + v^2/(2a) <= (d - buffer) 的正根：
+        # v_max = -a*dt + sqrt((a*dt)^2 + 2a(d-buffer))
+        def max_safe_speed(clearance_m: float) -> float:
+            available = clearance_m - buffer_dist
+            if available <= 0.0:
+                return 0.0
+            disc = (a_max * dt) ** 2 + 2.0 * a_max * available
+            if disc <= 0.0:
+                return 0.0
+            return max(0.0, -a_max * dt + math.sqrt(disc))
+
+        # ---- 选择“用于判断方向”的速度向量：优先指令，指令很小则用真实速度 ----
+        v_cmd_norm = act[:2].astype(np.float32)
+        if float(np.linalg.norm(v_cmd_norm)) >= 0.05:
+            v_dir_world = v_cmd_norm
+        else:
+            v_dir_world = v_now_world
+
+        if float(np.linalg.norm(v_dir_world)) < 1e-3:
+            return action  # 本来就不动
+
+        # 把 world 方向变换到 lidar 系，求其水平角
+        v_dir_lidar = R_lw.dot(np.array([v_dir_world[0], v_dir_world[1], 0.0], dtype=np.float32))
+        dir_angle = float(math.atan2(v_dir_lidar[1], v_dir_lidar[0]))
+
+        # 如果 FOV 不是全向，则“FOV 外一律视作不可见 -> 刹停”
+        delta = (dir_angle - h_off) % (2.0 * math.pi)
+        if (not full_fov) and (delta > h_range + 1e-6):
+            safe = act.copy()
+            safe[:2] = 0.0
+            safe[2] = 0.0
+            return safe
+
+        desired_idx = int(np.clip(int((delta / h_range) * num_bins), 0, num_bins - 1))
+        d_dir = corridor_min(desired_idx)
+
+        # 指令期望的实际速度大小（m/s）
+        v_des = float(np.linalg.norm(v_cmd_norm) * v_xy_max)
+        v_des = min(v_des, v_xy_max * math.sqrt(2.0))
+
+        # 始终限速（哪怕方向安全，也避免“冲太快来不及刹”）
+        v_safe_dir = max_safe_speed(d_dir) * 0.85  # 再留 15% 裕度
+
+        # “恐慌条件”：任何方向太近，强制找最开阔方向并压低速度
+        panic = d_global_min < (buffer_dist + 0.2)
+        need_turn = panic or (d_dir < trigger_dist)
+
+        # 情况 1：不需要转向，只需要限速
+        if not need_turn:
+            if v_des <= v_safe_dir + 1e-3:
+                return action  # 原动作足够安全
+
+            # 沿原 world 方向缩放速度
+            norm = float(np.linalg.norm(v_cmd_norm))
+            if norm < 1e-6:
+                safe = act.copy()
+                safe[:2] = 0.0
+                safe[2] = 0.0
+                return safe
+
+            unit = v_cmd_norm / norm
+            v_cmd = max(0.0, min(v_des, v_safe_dir))
+
+            safe = act.copy()
+            safe[0] = float(np.clip(unit[0] * v_cmd / v_xy_max, -1.0, 1.0))
+            safe[1] = float(np.clip(unit[1] * v_cmd / v_xy_max, -1.0, 1.0))
+            return safe
+
+        # 情况 2：需要转向 -> 在所有 bin 中找“可安全速度上限最大”的方向（更偏向更远区间）
+        best_idx = None
+        best_v = 0.0
+        best_clear = 0.0
+
+        for i in range(num_bins):
+            clear_i = corridor_min(i)
+            v_i = max_safe_speed(clear_i)
+            if (v_i > best_v + 1e-6) or (abs(v_i - best_v) <= 1e-6 and clear_i > best_clear):
+                best_v = v_i
+                best_clear = clear_i
+                best_idx = i
+
+        if best_idx is None or best_v <= 1e-3:
+            # 四周都不够刹停 -> 刹停
+            safe = act.copy()
+            safe[:2] = 0.0
+            safe[2] = 0.0
+            return safe
+
+        v_cmd = min(v_des, best_v * 0.85)
+        if v_cmd < 0.05:
+            safe = act.copy()
+            safe[:2] = 0.0
+            safe[2] = 0.0
+            return safe
+
+        # best_idx -> lidar 系方向向量，再变回 world XY
+        angle_best = h_off + ((best_idx + 0.5) / num_bins) * h_range
+        v_lidar_unit = np.array([math.cos(angle_best), math.sin(angle_best), 0.0], dtype=np.float32)
+        v_world = R_wl.dot(v_lidar_unit)
+        v_world_xy = v_world[:2].astype(np.float32)
+
+        norm_xy = float(np.linalg.norm(v_world_xy))
+        if norm_xy < 1e-6:
+            safe = act.copy()
+            safe[:2] = 0.0
+            safe[2] = 0.0
+            return safe
+
+        unit_xy = v_world_xy / norm_xy
+
+        safe = act.copy()
+        safe[0] = float(np.clip(unit_xy[0] * v_cmd / v_xy_max, -1.0, 1.0))
+        safe[1] = float(np.clip(unit_xy[1] * v_cmd / v_xy_max, -1.0, 1.0))
+        safe[2] = 0.0  # 介入避障时锁住 yaw_rate，减少不确定性/振荡
+        return safe
 
 
 

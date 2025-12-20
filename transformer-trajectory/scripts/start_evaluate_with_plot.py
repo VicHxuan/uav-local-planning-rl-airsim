@@ -30,10 +30,10 @@ def main():
     print(f"Random seeds reset to {SEED}")
 
     # 请根据实际情况修改路径
-    eval_path = r'/home/user/Transformer_Trajectory/logs/Easy_2D/New_rewards_very_OK_2025_12_10_16_20_seed160573343_Multirotor_MLP_embedding_Transformer_encoder_SAC'
+    eval_path = r'/home/user/Transformer_Trajectory/logs/Easy_2D/2025_12_14_21_18_seed1070139711_Multirotor_MLP_embedding_Transformer_encoder_SAC'
     config_file = eval_path + '/config/config.ini'
     print(config_file)
-    model_file = eval_path + '/models/model_sb3_300000_steps.zip'
+    model_file = eval_path + '/models/model_sb3_600000_steps.zip'
     total_eval_episodes = 50
 
     app = QtWidgets.QApplication(sys.argv)

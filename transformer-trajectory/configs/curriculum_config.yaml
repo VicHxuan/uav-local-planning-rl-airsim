@@ -6,8 +6,8 @@ curriculum_learning:
   levels:
     # ========== Level 1: Easy - 入门级 ==========
     - name: "Level_1_Easy"
-      min_episodes: 50           # 最少训练20个episode
-      trigger_success_rate: 0.85 # 成功率达到70%晋级
+      min_episodes: 200          # 最少训练20个episode
+      trigger_success_rate: 0.9 # 成功率达到70%晋级
       
       obstacles:
         # 大立方体（稀疏分布）
@@ -26,8 +26,8 @@ curriculum_learning:
 
     # ========== Level 2: Medium - 中等难度 ==========
     - name: "Level_2_Medium"
-      min_episodes: 50           # 最少训练20个episode
-      trigger_success_rate: 0.85 # 成功率达到70%晋
+      min_episodes: 200           # 最少训练20个episode
+      trigger_success_rate: 0.9 # 成功率达到70%晋
       
       obstacles:
         # 大立方体（数量增加）
@@ -47,8 +47,8 @@ curriculum_learning:
 
     # ========== Level 3: Hard - 困难模式 ==========
     - name: "Level_3_Hard"
-      min_episodes: 50           # 最少训练20个episode
-      trigger_success_rate: 0.85 # 成功率达到70%晋
+      min_episodes: 200           # 最少训练20个episode
+      trigger_success_rate: 0.9 # 成功率达到70%晋
       
       obstacles:
         # 大立方体（数量增加）
@@ -80,8 +80,8 @@ curriculum_learning:
 
     # ========== Level 4: Expert - 专家模式 ==========
     - name: "Level_4_Expert"
-      min_episodes: 50           # 最少训练20个episode
-      trigger_success_rate: 0.8 # 成功率达到70%晋
+      min_episodes: 200           # 最少训练20个episode
+      trigger_success_rate: 0.9 # 成功率达到70%晋
       
       obstacles:
         # 大立方体（数量增加）
