@@ -14,7 +14,11 @@ from collections import deque
 from PyQt5.QtCore import pyqtSignal
 from configparser import NoOptionError
 from .dynamics.multirotor_airsim import MultirotorDynamicsAirsim
-from .curriculum_tool.curriculum_manager import CurriculumManager
+from .curriculum_tool.curriculum_manager import (
+    CurriculumManager,
+    RollingOutcomeStats,
+    categorize_outcome,
+)
 
 class AirsimGymEnv(gym.Env, QtCore.QThread):
     # ================= PyQt Signals =================
@@ -44,7 +48,7 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
             self.logger.addHandler(handler)
             self.logger.setLevel(logging.INFO)
         # =======================================
-        
+
         self.frame_history = 4
         self._obs_history = deque(maxlen=self.frame_history)
 
@@ -66,6 +70,8 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
             'success_count': 0,
             'total_count': 0
         }
+        # 共享的最近 20 次终止统计（用于课程和 TB）
+        self.outcome_tracker = RollingOutcomeStats(window_size=20)
 
     def set_config(self, cfg):
         """get config from .ini file"""
@@ -74,7 +80,6 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
         self.dynamic_name = cfg.get('options', 'dynamic_name')
         self.perception_type = cfg.get('options', 'perception')
         
-        # [新增] 读取 dim 参数
         try:
             self.dim = cfg.getint('options', 'dim')
         except:
@@ -203,6 +208,7 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
         self.reward_type = cfg.get('options', 'reward_type')
         self._dt = float(getattr(self.dynamic_model, 'dt'))
 
+        # Curriculum
         try:
             curriculum_enabled = cfg.getboolean('curriculum', 'enabled')
             if curriculum_enabled:
@@ -210,11 +216,13 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
                                                 fallback='config/curriculum_config.yaml')
                 self.curriculum_manager = CurriculumManager(
                     config_path=curriculum_config_path,
-                    airsim_client=self.client
+                    airsim_client=self.client,
+                    outcome_tracker=self.outcome_tracker
                 )
                 print(f"✅ Curriculum Learning Enabled: {len(self.curriculum_manager.levels)} levels")
             else:
                 print("ℹ️  Curriculum Learning Disabled")
+                self.curriculum_manager = None
         except (NoOptionError, KeyError):
             self.curriculum_manager = None
 
@@ -259,7 +267,6 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
         except:
             pass
         
-        # [修改] 使用 Adaptive 初始化方法
         self.dynamic_model.init_goal_pose_adaptive()
         
         yaw_noise = self.dynamic_model.start_random_angle * np.random.random()
@@ -336,7 +343,6 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
         action = self._smooth_action_exponential(action)
         action = self._apply_safe_velocity_correction(action)
 
-        # [修改] 使用 Adaptive 更新方法
         self.dynamic_model.update_goal_pose_adaptive()
         self.dynamic_model.set_action(action)
 
@@ -357,42 +363,44 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
             level_changed, curriculum_info = self.curriculum_manager.update(
                 done=done,
                 episode_success=self.info.get('is_success', False),
-                total_reward=self.cumulated_episode_reward
+                total_reward=self.cumulated_episode_reward,
+                done_info=self.info
             )
+            # 将课程统计与 level 信息加入 info
+            self.info.update({
+                'curriculum_level_changed': level_changed,
+                'current_level': curriculum_info.get('level', 0),
+                'level_name': curriculum_info.get('name', 'Fixed'),
+                'success_rate_20': curriculum_info.get('success_rate_20', 0.0),
+                'crash_rate_20': curriculum_info.get('crash_rate_20', 0.0),
+                'timeout_rate_20': curriculum_info.get('timeout_rate_20', 0.0),
+                'workout_rate_20': curriculum_info.get('workout_rate_20', 0.0),
+            })
             if level_changed:
-                self.info['curriculum_level_changed'] = True
-                self.info['current_level'] = curriculum_info['level']
-                self.info['level_name'] = curriculum_info['name']
-                print(f"🎓 Graduated to Level {curriculum_info['level'] + 1}!")
-
+                print(f"📚 Level Up! Now Level {curriculum_info['level'] + 1} ({curriculum_info.get('name', '')})")
 
                 import os
                 from datetime import datetime
-                
-                # 1. 获取当前脚本文件所在的绝对目录 (确保能找到文件夹)
                 current_script_dir = os.path.dirname(os.path.abspath(__file__))
-                
-                # 2. 拼接完整的文件夹路径
                 log_dir = os.path.join(current_script_dir, "curriculum_level_logs")
-                
                 if not os.path.exists(log_dir):
                     os.makedirs(log_dir)
-                
-                # 3. 准备文件名和内容
                 time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 filename = f"Level_{curriculum_info['level']}_Record_{time_str}.txt"
                 file_path = os.path.join(log_dir, filename)
-                
-                # 4. 写入文件
                 with open(file_path, "w", encoding='utf-8') as f:
                     f.write(f"System Time: {time_str}\n")
                     f.write(f"Curriculum Level: {curriculum_info['level']}\n")
                     f.write(f"Current Episode: {self.episode_num}\n")
                     f.write(f"Total Steps: {self.total_step}\n")
-                
-                # 5. 打印完整路径，方便你在控制台直接复制路径去查找
                 print(f"📚 Level Up! Archive saved to: {file_path}")
-                print(f"📚 Current Level: {curriculum_info['level']}")
+        elif done:
+            # 无课程学习时也保持统计，供 TB 使用
+            outcome = categorize_outcome(self.info, self.info.get('is_success', False))
+            self.outcome_tracker.add(outcome)
+            self.info.update(self.outcome_tracker.rates())
+            self.info['current_level'] = 0
+            self.info['level_name'] = 'Fixed'
 
         try:
             p = np.array(self.dynamic_model.get_position(), dtype=np.float32)
@@ -410,7 +418,6 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
 
         return obs, reward, done, self.info
 
-
     def get_obs(self):
         if self.perception_type == 'lidar_vector':
             obs = self.get_obs_lidar_vector()
@@ -420,6 +427,7 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
             print("Invalid perception_type!", self.perception_type)
             obs = None
         return obs
+
 
     def get_lidar_data(self, ver: int = None, hor: int = None) -> np.ndarray:
         try:

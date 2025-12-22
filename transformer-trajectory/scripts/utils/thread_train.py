@@ -1,8 +1,6 @@
 """
 DRL训练主程序 - 支持 PPO/SAC/TD3
 """
-
-# ========== 标准库 ==========
 import os
 import sys
 import ast
@@ -11,18 +9,15 @@ import datetime
 import argparse
 from configparser import ConfigParser
 
-# ========== 第三方库 ==========
 import gym
 import wandb
 import numpy as np
 import torch as th
 from PyQt5 import QtCore
 
-# ========== 自定义模块 ==========
 import gym_env
 from .custom_policy_sb3 import MLP_encoder, MLP_embedding_Transformer_encoder
 
-# ========== Stable-Baselines3 ==========
 from stable_baselines3 import PPO, SAC, TD3
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList, BaseCallback
@@ -30,11 +25,9 @@ from stable_baselines3.ppo.policies import MlpPolicy as MlpPolicy_ppo
 from stable_baselines3.sac.policies import MlpPolicy as MlpPolicy_sac
 from stable_baselines3.td3.policies import MlpPolicy as MlpPolicy_td3
 from wandb.integration.sb3 import WandbCallback
-# 【新增】引入 VecEnv 包装器 和 Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-from stable_baselines3.common.monitor import Monitor  # <--- 必须引入这个
+from stable_baselines3.common.monitor import Monitor
 
-# ========== 路径设置 ==========
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(CURRENT_DIR))
 
@@ -48,7 +41,6 @@ def get_parser():
     return parser
 
 
-# 【新增】自定义回调：用于同步保存 VecNormalize 统计数据
 class SaveVecNormalizeCallback(BaseCallback):
     def __init__(self, save_freq: int, save_path: str, verbose: int = 0):
         super(SaveVecNormalizeCallback, self).__init__(verbose)
@@ -65,6 +57,30 @@ class SaveVecNormalizeCallback(BaseCallback):
         return True
 
 
+class EpisodeStatsCallback(BaseCallback):
+    """
+    记录最近20场的终止比例（success/crash/timeout/workout）以及课程等级。
+    利用 env info 中的统计，确保与课程管理一致。
+    """
+    def _on_step(self) -> bool:
+        infos = self.locals.get("infos")
+        dones = self.locals.get("dones")
+        if infos is None or dones is None:
+            return True
+
+        for done, info in zip(dones, infos):
+            if not done or info is None:
+                continue
+            for key in ("success_rate_20", "crash_rate_20", "timeout_rate_20", "workout_rate_20"):
+                if key in info:
+                    self.logger.record(f"train/{key}", float(info[key]))
+            if "current_level" in info:
+                self.logger.record("curriculum/level", int(info["current_level"]))
+            if "level_name" in info:
+                self.logger.record("curriculum/level_name", info["level_name"])
+        return True
+
+
 class TrainingThread(QtCore.QThread):
     """DRL训练线程"""
     
@@ -74,33 +90,20 @@ class TrainingThread(QtCore.QThread):
         print("初始化训练线程")
         print("=" * 60)
         
-        # 加载配置
         self.cfg = ConfigParser()
         self.cfg.read(config)
         self.project_name = self.cfg.get('options', 'env_name')
         print(f"项目: {self.project_name}")
         
-        # 创建环境
-        # 1. 创建原始环境 r_env，保留引用以便 GUI 连接信号
         self.r_env = gym.make('airsim-env-v0')
         self.r_env.set_config(self.cfg)
         print(f"环境: {self.cfg.get('options', 'env_name')}")
         print(f"感知: {self.cfg.get('options', 'perception')}")
 
-        # 【修改关键点】 2. 使用 Monitor 包裹原始环境
-        # Monitor 负责记录 episode 的 reward 和 length，SB3 靠它来打印日志，没有它会报 IndexError
-        # 我们在这里不设置 filename，因为 SB3 的 logger 会自己处理，这里主要为了填充 info['episode']
         self.monitor_env = Monitor(self.r_env)
-
-        # 3. 必须先包裹一层 DummyVecEnv (SB3要求)
-        # 注意：这里传入的是 lambda: self.monitor_env
         self.env = DummyVecEnv([lambda: self.monitor_env])
-
-        # 4. 使用 VecNormalize 自动归一化 Reward 和 Observation
-        # norm_reward=True 对稳定 Loss 至关重要
         self.env = VecNormalize(self.env, norm_obs=True, norm_reward=True, clip_obs=10., clip_reward=10.)
 
-        # 初始化WandB
         if self.cfg.getboolean('options', 'use_wandb'):
             wandb.init(
                 project=self.project_name,
@@ -122,35 +125,25 @@ class TrainingThread(QtCore.QThread):
         print("开始训练")
         print("=" * 60)
         
-        # 1. 设置随机种子
         seed = self._set_random_seed()
-        
-        # 2. 创建目录
         log_path, model_path, config_path, data_path = self._create_directories(seed)
         
-        # 3. 保存配置
         with open(os.path.join(config_path, 'config.ini'), 'w') as f:
             self.cfg.write(f)
         print(f"✓ 配置已保存")
         
-        # 4. 构建策略配置
         policy_kwargs, net_arch_list = self._build_policy_kwargs()
         
-        # 5. 创建模型
         algo = self.cfg.get('options', 'algo')
         model = self._create_model(algo, policy_kwargs, net_arch_list, log_path, seed)
         
-        # 6. 训练
         self._train_model(model, model_path, data_path)
         
         print("\n" + "=" * 60)
         print("训练完成！")
         print("=" * 60)
     
-    # ========== 辅助方法 ==========
-    
     def _set_random_seed(self):
-        """设置全局随机种子"""
         seed = random.randint(0, 2**31 - 1)
         print(f"\n随机种子: {seed}")
         
@@ -166,7 +159,6 @@ class TrainingThread(QtCore.QThread):
         return seed
     
     def _create_directories(self, seed):
-        """创建训练目录"""
         timestamp = datetime.datetime.now().strftime('%Y_%m_%d_%H_%M')
         base_path = (
             f"logs/{self.project_name}/"
@@ -190,7 +182,6 @@ class TrainingThread(QtCore.QThread):
         return paths['log'], paths['model'], paths['config'], paths['data']
     
     def _build_policy_kwargs(self):
-        """构建策略网络配置"""
         print("\n" + "-" * 60)
         print("配置策略网络")
         print("-" * 60)
@@ -234,7 +225,6 @@ class TrainingThread(QtCore.QThread):
         return policy_kwargs, net_arch_list
     
     def _create_model(self, algo, policy_kwargs_base, net_arch_list, log_path, seed):
-        """根据算法类型创建模型"""
         print("\n" + "-" * 60)
         print(f"创建模型: {algo}")
         print("-" * 60)
@@ -274,7 +264,6 @@ class TrainingThread(QtCore.QThread):
         return TD3(MlpPolicy_td3, self.env, action_noise=action_noise, buffer_size=self.cfg.getint('TD3', 'buffer_size'), learning_starts=self.cfg.getint('TD3', 'learning_starts'), batch_size=self.cfg.getint('TD3', 'batch_size'), learning_rate=self.cfg.getfloat('TD3', 'learning_rate'), gamma=self.cfg.getfloat('TD3', 'gamma'), train_freq=(self.cfg.getint('TD3', 'train_freq'), 'step'), gradient_steps=self.cfg.getint('TD3', 'gradient_steps'), tau=self.cfg.getfloat('TD3', 'tau'), policy_delay=self.cfg.getint('TD3', 'policy_delay'), target_policy_noise=self.cfg.getfloat('TD3', 'target_policy_noise'), target_noise_clip=self.cfg.getfloat('TD3', 'target_noise_clip'), policy_kwargs=policy_kwargs, tensorboard_log=log_path, seed=seed, verbose=2)
 
     def _print_model_structure(self, model, algo):
-        # 保持原代码不变
         print("\n" + "=" * 60)
         print("模型结构")
         print("=" * 60)
@@ -295,19 +284,15 @@ class TrainingThread(QtCore.QThread):
         print("=" * 60)
     
     def _train_model(self, model, model_path, data_path):
-        """执行训练"""
         print("\n" + "=" * 60)
         print("开始训练")
         print("=" * 60)
         
-        # 将 model 赋给原始环境，如果你的环境逻辑需要 model 引用
         self.r_env.model = model 
         self.r_env.data_path = data_path
         
-        # 配置回调
         callbacks = self._setup_callbacks(model_path)
         
-        # 训练
         total_timesteps = self.cfg.getint('options', 'total_timesteps')
         print(f"总训练步数: {total_timesteps:,}")
         
@@ -317,20 +302,16 @@ class TrainingThread(QtCore.QThread):
             callback=CallbackList(callbacks)
         )
         
-        # 保存最终模型
         final_model_path = os.path.join(model_path, f"model_sb3_final_{model.num_timesteps}_steps")
         model.save(final_model_path)
-        # 【新增】保存最终的 VecNormalize 统计数据
         final_stats_path = os.path.join(model_path, f"vec_normalize_final_{model.num_timesteps}_steps.pkl")
         self.env.save(final_stats_path)
         print(f"\n✓ 最终模型及统计数据已保存: {final_model_path}")
     
     def _setup_callbacks(self, model_path):
-        """配置训练回调"""
         callbacks = []
         save_freq = self.cfg.getint('options', 'save_freq')
 
-        # 1. 检查点保存 (仅保存模型参数)
         checkpoint_cb = CheckpointCallback(
             save_freq=save_freq,
             save_path=model_path,
@@ -338,16 +319,17 @@ class TrainingThread(QtCore.QThread):
         )
         callbacks.append(checkpoint_cb)
 
-        # 【新增】2. VecNormalize 保存 (同步保存统计数据)
         vec_norm_cb = SaveVecNormalizeCallback(
             save_freq=save_freq,
             save_path=model_path
         )
         callbacks.append(vec_norm_cb)
+
+        # 新增：课程/终止率 + Level 的 TB 记录
+        callbacks.append(EpisodeStatsCallback())
         
         print(f"✓ 检查点频率: 每{save_freq}步")
         
-        # WandB回调
         if self.cfg.getboolean('options', 'use_wandb'):
             wandb_cb = WandbCallback(model_save_freq=0, verbose=2)
             callbacks.append(wandb_cb)
