@@ -99,6 +99,9 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
         self.v_xy_max = cfg.getfloat('multirotor', 'v_xy_max')
         self.v_z_max = cfg.getfloat('multirotor', 'v_z_max')
         self.yaw_rate_max_rad = math.radians(cfg.getfloat('multirotor', 'yaw_rate_max_deg'))
+        
+        self.goal_distance = cfg.getfloat('goal', 'goal_distance_init')
+        self.max_episode_steps = cfg.getint('options', 'max_episode_steps')
 
         try:
             self.lidar_sensor_name = cfg.get('environment', 'lidar_sensor_name')
@@ -115,22 +118,18 @@ class AirsimGymEnv(gym.Env, QtCore.QThread):
         # Set Environment
         if self.env_name == 'Easy_2D':
             start_position = [0, 0, 5]
-            goal_distance = 55
             self.dynamic_model.set_start(start_position, random_angle=math.pi*2)
-            self.dynamic_model.set_goal(distance=goal_distance, random_angle=math.pi*2)
+            self.dynamic_model.set_goal(distance=self.goal_distance, random_angle=math.pi*2)
             self.work_space_x = [-100, 100]
             self.work_space_y = [-100, 100]
             self.work_space_z = [-0.5, 10]
-            self.max_episode_steps = 500 
-        elif self.env_name == 'Side_Side_2D':
+        elif self.env_name == 'NavRL_2D':
             start_position = [0, 0, 5]
-            goal_distance = 70
             self.dynamic_model.set_start(start_position, random_angle=math.pi*2)
-            self.dynamic_model.set_goal(distance=goal_distance, random_angle=math.pi*2)
-            self.work_space_x = [-100, 100]
-            self.work_space_y = [-100, 100]
+            self.dynamic_model.set_goal(distance=self.goal_distance, random_angle=math.pi*2)
+            self.work_space_x = [-25, 25]
+            self.work_space_y = [-25, 25]
             self.work_space_z = [-0.5, 20]
-            self.max_episode_steps = 800              
         else:
             raise Exception("Invalid env_name!", self.env_name)
 

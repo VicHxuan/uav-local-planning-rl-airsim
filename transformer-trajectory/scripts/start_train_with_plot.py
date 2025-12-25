@@ -10,7 +10,7 @@ from utils.thread_train import TrainingThread
 
 def main():
 
-    config_file = 'configs/Easy2D_SAC-Transformer_encoder-vector_lidar_multi-EGOreward.ini'
+    config_file = 'configs/NavRL2D_SAC-Transformer_encoder-vector_lidar_multi-EGOreward.ini'
     # 1. Create the qt thread
     app = QtWidgets.QApplication(sys.argv)
     gui = TrainingUi(config_file)
