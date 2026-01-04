@@ -102,7 +102,7 @@ class TrainingThread(QtCore.QThread):
 
         self.monitor_env = Monitor(self.r_env)
         self.env = DummyVecEnv([lambda: self.monitor_env])
-        self.env = VecNormalize(self.env, norm_obs=True, norm_reward=True, clip_obs=10., clip_reward=10.)
+        self.env = VecNormalize(self.env, norm_obs=True, norm_reward=False, clip_obs=10., clip_reward=10.)
 
         if self.cfg.getboolean('options', 'use_wandb'):
             wandb.init(
