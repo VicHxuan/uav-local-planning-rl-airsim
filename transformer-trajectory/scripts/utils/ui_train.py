@@ -1,9 +1,6 @@
 '''
-@Author: user
-@Date: 2020-06-01 22:52:40
-LastEditTime: 2022-12-02 17:30:59
-@Description: 
-@Github: https://github.com/userdsn
+PyQt5 training monitor GUI: plots observation / reward / command curves
+streamed from the training thread.
 '''
 import sys
 import math

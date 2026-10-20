@@ -227,4 +227,3 @@ dependencies:
       - wandb==0.19.9
       - werkzeug==3.0.6
       - wheel==0.38.0
-prefix: /home/user/anaconda3/envs/airsim_drl

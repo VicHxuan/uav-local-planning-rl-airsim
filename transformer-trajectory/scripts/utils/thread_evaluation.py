@@ -14,8 +14,6 @@ import time
 from tqdm import tqdm
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(CURRENT_DIR))
-sys.path.append(
-    r"C:\Users\user\Documents\GitHub\Transformer_Trajectory\scripts")
 
 
 def rule_based_policy(obs):
