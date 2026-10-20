@@ -1,3 +1,5 @@
+# SB3 logger smoke test.
+
 from stable_baselines3 import A2C
 from stable_baselines3.common.logger import configure
 

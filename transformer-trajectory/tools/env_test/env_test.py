@@ -1,3 +1,5 @@
+# Smoke test for the registered gym environment.
+
 import gym
 import gym_env
 import time

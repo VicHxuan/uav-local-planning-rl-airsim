@@ -1,6 +1,7 @@
+"""PyQt5 training monitor GUI: plots curves streamed from the training thread."""
+
 import sys
 import math
-from turtle import pen
 import numpy as np
 import pyqtgraph as pg
 from PyQt5 import QtWidgets

@@ -1,27 +1,32 @@
-# Migration Notice: AirSim → Isaac Sim / Isaac Lab
+# Transformer Trajectory — legacy experiments
 
-## Background
+Earlier experimental line of this research: **SAC agents with different
+observation encoders** (Transformer / CNN / LSTM / MLP) for mapless local
+trajectory planning of a quadrotor in AirSim. Superseded by the root project
+(see the root README); kept as an archive.
 
-Starting from **2026.1.1**, this project **stops using AirSim**.
+## Contents
 
-The primary reason is that **AirSim is difficult to scale for parallel execution** in our current workflow, which makes large-scale training and evaluation inefficient.
+| Path | Description |
+| --- | --- |
+| `gym_env/` | AirSim Gym environment (older version of the root one) |
+| `configs/` | Ablation configs per policy variant (encoder x observation x reward); `need_edit_*` are unfinished drafts |
+| `scripts/` | GUI train / eval entries, custom SB3 policies, trained checkpoint `model_sb3.zip` |
+| `airsim_settings/` | AirSim settings for train / eval / init modes |
+| `tools/` | Voxel-grid map generation, env / GPU / wandb smoke tests |
 
-## New Direction
+The ablations compare encoder architectures (Transformer token attention,
+CNN, LSTM, plain MLP) and observation mixes (lidar vector, lidar image, goal,
+ego state) under SAC.
 
-From **2026.1.1** onward, we begin migrating the simulation stack to:
+## Dependencies
 
-- **Isaac Sim 4.5**
-- **Isaac Lab 2.1.0**
+See `requirements.txt` (Python 3.8). The original development used a locally
+vendored copy of stable-baselines3, which is not included here; the custom
+policies live in `scripts/utils/custom_policy_sb3.py`.
 
-The goal of this migration is to achieve **better parallelization**, improve simulation throughput, and provide a more maintainable long-term simulation foundation.
+## Migration notice
 
-## Status
-
-- AirSim integration: **deprecated / no longer used**
-- Isaac Sim + Isaac Lab integration: **in progress**
-- Existing features will be gradually re-implemented and validated on the new stack.
-
-## Notes
-
-- During the transition period, some components may be temporarily unavailable or behave differently compared with the AirSim version.
-- Please refer to the latest commits and documentation updates for migration progress and usage changes.
+Since **2026-01-01** this line stopped using AirSim — hard to scale for
+parallel execution — and the simulation stack migrates to **Isaac Sim 4.5 +
+Isaac Lab 2.1.0** for better parallelization and long-term maintainability.

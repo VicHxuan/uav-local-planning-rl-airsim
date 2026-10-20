@@ -1,3 +1,5 @@
+# wandb + SB3 callback smoke test.
+
 import gym
 import wandb
 from wandb.integration.sb3 import WandbCallback

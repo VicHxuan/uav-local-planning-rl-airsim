@@ -1,4 +1,5 @@
-from tracemalloc import start
+"""SB3 policy components: feature extractors used by the training scripts."""
+
 import gym
 import torch.nn as nn
 import torch as th

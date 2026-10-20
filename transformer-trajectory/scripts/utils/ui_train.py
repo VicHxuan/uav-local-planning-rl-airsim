@@ -4,7 +4,6 @@ streamed from the training thread.
 '''
 import sys
 import math
-from turtle import pen
 
 import numpy as np
 import pyqtgraph as pg

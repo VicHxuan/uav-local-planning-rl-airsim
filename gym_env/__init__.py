@@ -1,4 +1,5 @@
-from importlib.metadata import entry_points
+"""Registers the AirSim Gym environment with gym."""
+
 from gym.envs.registration import register
 
 register(

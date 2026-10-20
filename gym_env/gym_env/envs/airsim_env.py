@@ -1,3 +1,5 @@
+"""AirSim Gym environment for mapless UAV local planning (env logic plus Qt signals for the live GUI)."""
+
 import cv2
 import gym
 import time

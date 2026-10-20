@@ -1,4 +1,4 @@
-# curriculum_manager.py
+"""Curriculum manager (legacy): outcome statistics and difficulty scheduling."""
 
 import yaml
 import logging

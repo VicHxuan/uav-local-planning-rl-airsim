@@ -1,3 +1,5 @@
+"""Evaluation entry with live GUI plots."""
+
 import random
 import numpy as np
 import torch

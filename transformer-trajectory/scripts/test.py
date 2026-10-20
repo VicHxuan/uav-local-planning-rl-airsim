@@ -1,3 +1,5 @@
+"""AirSim connection smoke test."""
+
 import airsim
 import time
 import math

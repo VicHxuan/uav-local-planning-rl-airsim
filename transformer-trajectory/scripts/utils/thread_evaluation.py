@@ -1,3 +1,5 @@
+"""Evaluation worker thread (legacy): runs evaluation episodes with the live GUI."""
+
 from PyQt5 import QtCore
 from configparser import ConfigParser
 from stable_baselines3 import TD3, SAC, PPO

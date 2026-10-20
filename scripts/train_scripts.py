@@ -1,3 +1,5 @@
+"""Training entry: launches the GUI-based training pipeline."""
+
 import sys
 import torch
 import argparse

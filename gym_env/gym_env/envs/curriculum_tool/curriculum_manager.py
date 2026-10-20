@@ -1,3 +1,5 @@
+"""Curriculum manager: outcome statistics and difficulty scheduling for training."""
+
 import yaml
 import logging
 from typing import Dict, List, Optional, Tuple

@@ -1,3 +1,5 @@
+"""AirSim Gym environment (legacy version) for mapless UAV local planning."""
+
 import cv2
 import gym
 import time

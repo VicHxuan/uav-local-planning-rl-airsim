@@ -1,3 +1,5 @@
+"""Training worker thread: builds the environment and SB3 model, runs the training loop."""
+
 import os
 import sys
 import ast

@@ -1,4 +1,5 @@
-from tracemalloc import start
+"""Custom SB3 policies: Transformer / CNN / LSTM / MLP encoders over lidar, goal and ego tokens."""
+
 import gym
 import torch.nn as nn
 import torch as th

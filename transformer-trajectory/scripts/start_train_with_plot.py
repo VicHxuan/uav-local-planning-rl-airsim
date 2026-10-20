@@ -1,3 +1,5 @@
+"""Training entry with live GUI plots."""
+
 import sys
 import torch
 import argparse

@@ -1,3 +1,5 @@
+"""Headless evaluation entry: loads a trained SB3 model and runs evaluation episodes."""
+
 import random
 import numpy as np
 import torch

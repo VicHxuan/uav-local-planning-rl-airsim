@@ -1,3 +1,5 @@
+# Torch / CUDA availability check.
+
 import torch
 
 print(torch.__version__)  # 查看torch当前版本号
