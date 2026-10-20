@@ -1,0 +1,129 @@
+absl-py==2.1.0
+airsim==1.8.1
+argcomplete==3.5.1
+attrs==24.2.0
+Brotli @ file:///croot/brotli-split_1714483155106/work
+cachetools==5.5.0
+catkin-pkg==1.0.0
+catkin-tools==0.9.4
+Cerberus==1.3.5
+certifi @ file:///home/conda/feedstock_root/build_artifacts/certifi_1725278078093/work/certifi
+charset-normalizer @ file:///croot/charset-normalizer_1721748349566/work
+click==8.1.8
+cloudpickle==1.6.0
+contourpy==1.1.1
+coverage==7.6.1
+cycler==0.12.1
+defusedxml==0.7.1
+distro==1.9.0
+docker-pycreds==0.4.0
+docutils==0.20.1
+empy==3.3.4
+eval-type-backport==0.2.2
+filelock @ file:///croot/filelock_1700591183607/work
+fonttools==4.54.1
+fsspec==2025.3.0
+future==1.0.0
+gitdb==4.0.12
+GitPython==3.1.44
+gmpy2 @ file:///tmp/build/80754af9/gmpy2_1645455532332/work
+google-auth==2.36.0
+google-auth-oauthlib==1.0.0
+graphviz==0.20.3
+grpcio==1.68.0
+gym==0.21.0
+-e git+git@github.com:userdsn/Transformer_Trajectory.git@139af3d519a1a679933b40d93d640d1bbf61a339#egg=gym_env&subdirectory=gym_env
+gym-notices==0.0.8
+idna @ file:///croot/idna_1714398848350/work
+importlib-metadata==8.5.0
+importlib-resources==6.4.5
+jinja2==3.1.4
+jsonschema==4.23.0
+jsonschema-specifications==2023.12.1
+kconfiglib==14.1.0
+keyboard==0.13.5
+kiwisolver==1.4.7
+lxml==5.3.0
+Markdown==3.7
+MarkupSafe==2.1.5
+matplotlib==3.7.5
+mkl-fft @ file:///croot/mkl_fft_1695058164594/work
+mkl-random @ file:///croot/mkl_random_1695059800811/work
+mkl-service==2.4.0
+mpmath==1.3.0
+msgpack==0.6.2
+msgpack-python==0.5.6
+msgpack-rpc-python==0.4.1
+netifaces==0.11.0
+networkx @ file:///croot/networkx_1690561992265/work
+numpy @ file:///work/mkl/numpy_and_numpy_base_1682953417311/work
+nunavut==2.3.1
+oauthlib==3.2.2
+opencv-contrib-python==4.11.0.86
+opencv-python-headless==4.11.0.86
+osrf-pycommon==2.0.2
+packaging==24.1
+pandas==2.0.3
+pillow==10.4.0
+pkgconfig==1.5.5
+pkgutil-resolve-name==1.3.10
+platformdirs==4.3.6
+ply==3.11
+protobuf==3.20.3
+psutil==6.1.0
+pyasn1==0.6.1
+pyasn1-modules==0.4.1
+pycryptodomex==3.22.0
+pydantic==1.10.21
+pydot @ file:///home/conda/feedstock_root/build_artifacts/pydot_1704460744671/work
+pydsdl==1.22.0
+pyglet==1.5.0
+pygments==2.18.0
+pylocker==3.1.0
+pymavlink==2.4.42
+pyparsing @ file:///home/conda/feedstock_root/build_artifacts/pyparsing_1724616129934/work
+PyQt5==5.15.6
+PyQt5-Qt5==5.15.16
+PyQt5-sip==12.11.0
+pyqtgraph==0.13.3
+pyrep==3.2.0
+pyros-genmsg==0.5.8
+pyserial==3.5
+PySocks @ file:///tmp/build/80754af9/pysocks_1605305779399/work
+python-dateutil==2.9.0.post0
+pytz==2024.2
+pyulog==1.1.0
+PyYAML @ file:///croot/pyyaml_1728657952215/work
+referencing==0.35.1
+requests @ file:///croot/requests_1721410876868/work
+requests-oauthlib==2.0.0
+rospkg==1.5.1
+rpds-py==0.20.1
+rsa==4.9
+scipy==1.10.1
+seaborn==0.13.2
+sentry-sdk==2.25.1
+setproctitle==1.3.5
+sip @ file:///croot/sip_1698675935381/work
+six==1.16.0
+smmap==5.0.2
+squaternion==2023.9.2
+-e git+https://github.com/userdsn/stable-baselines3.git@012c9772fc813043e63e867f5c9ca1cc570fc266#egg=stable_baselines3&subdirectory=../../stable-baselines3
+sympy==1.13.3
+tensorboard==2.14.0
+tensorboard-data-server==0.7.2
+toml==0.10.2
+tomli @ file:///opt/conda/conda-bld/tomli_1657175507142/work
+torch==2.4.1
+torchaudio==2.4.1
+torchvision==0.20.0
+torchviz==0.0.3
+tornado==4.5.3
+tqdm==4.67.1
+triton==3.0.0
+typing-extensions @ file:///croot/typing_extensions_1715268824938/work
+tzdata==2024.2
+urllib3 @ file:///croot/urllib3_1727769808118/work
+wandb==0.19.9
+werkzeug==3.0.6
+zipp==3.20.2
