@@ -1,7 +1,0 @@
-logs/
-__pycache__/
-*.pth
-*.pt
-*.ckpt
-.vscode/
-.idea/

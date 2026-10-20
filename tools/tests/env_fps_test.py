@@ -11,8 +11,14 @@
 import airsim
 import time
 
+import os
+import sys
+
+SRC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'src')
+sys.path.insert(0, SRC_DIR)
+
 import gym
-import gym_env
+import env  # noqa: F401  (registers airsim-env-v0)
 
 from configparser import ConfigParser
 
@@ -29,7 +35,7 @@ camera = client.simGetCameraInfo("0")
 env = gym.make('airsim-env-v0')
 
 cfg = ConfigParser()
-cfg.read('configs\config_SimpleAvoid_SimpleMultirotor.ini')
+cfg.read('configs/config_SimpleAvoid_SimpleMultirotor.ini')
 env.set_config(cfg)
 
 start_time = time.time()

@@ -6,7 +6,7 @@ Minimal SB3 inference (no environment).
 - Reads observation from stdin and prints the action.
 - Works with custom feature extractors by importing your module.
 Usage:
-  python infer_sb3_min.py --model /path/to/model_sb3.zip [--algo SAC|TD3|PPO] [--deterministic]
+  python scripts/infer_min.py --model /path/to/model_sb3.zip [--algo SAC|TD3|PPO] [--deterministic]
 Commands in the REPL:
   - Enter numbers separated by space/comma. Length must equal np.prod(observation_space.shape).
   - Or paste a JSON-like array (e.g., [0.1, 0.2, ...]).
@@ -18,18 +18,18 @@ import json
 import argparse
 import numpy as np
 
-# Ensure we can import the custom feature extractor module in the same folder.
-THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-if THIS_DIR not in sys.path:
-    sys.path.append(THIS_DIR)
+# Ensure the src/ packages are importable (custom feature extractors live there).
+SRC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src')
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
 
-# Import your custom feature extractors so SB3 can unpickle the model.
+# Import the custom feature extractors so SB3 can unpickle the model.
 # Even if they are not referenced directly here, importing the module ensures the classes
 # (e.g., Raw / MLP / LSTM / LSTM_attention / CNN_GAP) are available.
 try:
-    import utils.custom_policy_sb3  # noqa: F401
+    import policies.encoders  # noqa: F401
 except Exception as e:
-    print("[WARN] 无法导入 custom_policy_sb3（如果模型使用了自定义特征提取器，load 会失败）:", e)
+    print("[WARN] cannot import policies.encoders (model load will fail if it uses custom extractors):", e)
 
 from stable_baselines3 import SAC, TD3, PPO
 

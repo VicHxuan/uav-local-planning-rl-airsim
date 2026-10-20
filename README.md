@@ -13,20 +13,27 @@ curriculum manager schedules task difficulty during training.
 
 ## Layout
 
-| Path | Description |
-| --- | --- |
-| `gym_env/` | Gym environment: AirSim env, multirotor dynamics, curriculum tool |
-| `scripts/` | Training / evaluation entry points, worker threads, GUI |
-| `configs/` | Curriculum and test configs |
-| `transformer-trajectory/` | Earlier experimental line (legacy, see its own README) |
+```
+src/               importable package code (entry scripts add it to sys.path)
+  env/             AirSim gym environment, multirotor dynamics, curriculum manager
+  policies/        SB3 feature extractors and observation encoders (MLP / LSTM / CNN / Transformer)
+  app/             GUI layer: training / evaluation worker threads, monitor UI
+scripts/           thin entry points: train.py, evaluate.py, infer_min.py
+configs/           test.ini, curriculum.yaml, and experiments/ ablation configs
+models/           trained checkpoint (model_sb3.zip)
+tools/             AirSim connection check, map generation, env smoke tests
+airsim_settings/   AirSim client settings (train / eval variants)
+```
 
 ## Usage
 
 ```bash
-pip install -r requirements.txt
+conda env create -f environment.yml   # or: pip install -r requirements.txt
 # start an AirSim simulator with a scene of your choice, then:
-python scripts/train_scripts.py
-python scripts/eval_scripts.py -model_path <model.zip> -eval_eps 20
+python scripts/train.py                                   # GUI training run (configs/test.ini)
+python scripts/evaluate.py -model_path <model.zip> -eval_eps 20
+python scripts/infer_min.py --model models/model_sb3.zip  # REPL inference without a simulator
 ```
 
-`import gym_env` registers the environment as `airsim-env-v0`.
+The entry scripts put `src/` on `sys.path`; `import env` registers the
+environment with gym as `airsim-env-v0`.

@@ -1,7 +1,13 @@
 # Smoke test for the registered gym environment.
 
+import os
+import sys
+
+SRC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'src')
+sys.path.insert(0, SRC_DIR)
+
 import gym
-import gym_env
+import env  # noqa: F401  (registers airsim-env-v0)
 import time
 
 env = gym.make("airsim-env-v0")

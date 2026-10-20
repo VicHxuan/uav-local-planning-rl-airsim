@@ -14,8 +14,8 @@ from PyQt5 import QtCore
 from collections import deque
 from PyQt5.QtCore import pyqtSignal
 from configparser import NoOptionError
-from .dynamics.multirotor_airsim import MultirotorDynamicsAirsim
-from .curriculum_tool.curriculum_manager import (
+from .multirotor_dynamics import MultirotorDynamicsAirsim
+from .curriculum import (
     CurriculumManager,
     RollingOutcomeStats,
     categorize_outcome,

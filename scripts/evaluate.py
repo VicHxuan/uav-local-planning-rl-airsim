@@ -1,5 +1,6 @@
-"""Evaluation entry with live GUI plots."""
+"""Headless evaluation entry: loads a trained SB3 model and runs evaluation episodes."""
 
+import os
 import random
 import numpy as np
 import torch
@@ -8,13 +9,15 @@ import sys
 import argparse
 from PyQt5 import QtWidgets
 
-from utils.thread_evaluation import EvaluateThread
-from utils.ui_train import TrainingUi
+SRC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src')
+sys.path.insert(0, SRC_DIR)
+
+from app.eval_thread import EvaluateThread
+from app.train_ui import TrainingUi
 from configparser import ConfigParser
 
 
 def get_parser():
-    # 保持原样
     parser = argparse.ArgumentParser(description="trained model evaluation with plot")
     parser.add_argument('-model_path', required=True, help='model path')
     parser.add_argument('-eval_eps', required=True, type=int, help='evaluation episode number')
@@ -31,11 +34,10 @@ def main():
         torch.cuda.manual_seed_all(SEED)
     print(f"Random seeds reset to {SEED}")
 
-    # 请根据实际情况修改路径
-    eval_path = r'/home/user/Transformer_Trajectory/logs/Easy_2D/2025_12_14_21_18_seed1070139711_Multirotor_MLP_embedding_Transformer_encoder_SAC'
+    eval_path = r'/logs/Test/Transformer_difficult'
     config_file = eval_path + '/config/config.ini'
     print(config_file)
-    model_file = eval_path + '/models/model_sb3_600000_steps.zip'
+    model_file = eval_path + '/models/model_sb3_300000_steps.zip'
     total_eval_episodes = 50
 
     app = QtWidgets.QApplication(sys.argv)
@@ -45,7 +47,6 @@ def main():
     evaluate_thread = EvaluateThread(
         eval_path, config_file, model_file, total_eval_episodes)
     
-    # 【修改】使用 r_env (raw env) 连接信号
     evaluate_thread.r_env.action_signal.connect(gui.action_cb)
     evaluate_thread.r_env.state_signal.connect(gui.state_cb)
     evaluate_thread.r_env.attitude_signal.connect(gui.attitude_plot_cb)

@@ -1,7 +1,6 @@
 """Training worker thread: builds the environment and SB3 model, runs the training loop."""
 
 import os
-import sys
 import ast
 import random
 import datetime
@@ -12,8 +11,8 @@ import wandb
 import numpy as np
 import torch as th
 from PyQt5 import QtCore
-import gym_env
-from .policy_sb3 import MLP_encoder, MLP_embedding_Transformer_encoder
+import env  # noqa: F401  (registers airsim-env-v0)
+from policies.feature_extractors import MLP_encoder, MLP_embedding_Transformer_encoder
 from stable_baselines3 import PPO, SAC, TD3
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList, BaseCallback
@@ -23,9 +22,6 @@ from stable_baselines3.td3.policies import MlpPolicy as MlpPolicy_td3
 from wandb.integration.sb3 import WandbCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from stable_baselines3.common.monitor import Monitor
-
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.dirname(CURRENT_DIR))
 
 def get_parser():
     parser = argparse.ArgumentParser(description="DRL训练程序 (支持 PPO/SAC/TD3)")
